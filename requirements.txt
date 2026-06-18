@@ -1,2 +1,4 @@
-fastapi==0.110.0
-uvicorn==0.28.0
+flask==3.0.2
+flask-socketio==5.3.6
+gevent==24.2.1
+gevent-websocket==0.10.1

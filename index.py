@@ -1,20 +1,19 @@
 import os
-import json
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse
+from flask import Flask, render_template_string, request
+from flask_socketio import SocketIO, emit, join_room, leave_room
 
-app = FastAPI()
+app = Flask(__name__)
+# Enable cross-origin accessibility for deployment
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='gevent')
 
-# Operational Memory Storage Matrix: { room_id: { user_id: WebSocket } }
-active_rooms = {}
-
-HTML_CONTENT = """
+HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QuickVC - Premium Python Voice Ecosystem</title>
+    <title>QuickVC - Premium Voice Grid</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
     <style>
         :root {
             --bg-gradient: linear-gradient(135deg, #030704 0%, #0d140f 100%);
@@ -55,7 +54,7 @@ HTML_CONTENT = """
             -webkit-text-fill-color: transparent;
             filter: drop-shadow(0 0 20px var(--accent-glow));
         }
-        header p { color: var(--text-muted); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1.5px; margin-top: 4px;}
+        header p { color: var(--text-muted); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1.5px; margin-top: 4px; }
 
         .app-container {
             background: var(--glass-bg);
@@ -101,7 +100,7 @@ HTML_CONTENT = """
         button.danger { background: rgba(255, 59, 48, 0.15); color: #ff453a; border: 1px solid rgba(255, 59, 48, 0.2); }
         button:disabled { opacity: 0.35; cursor: not-allowed; }
 
-        /* Voice Chat Screen Styles */
+        /* Discord Style Voice Room UI Elements */
         .room-header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 16px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
         .status-badge { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; background: rgba(0, 255, 102, 0.1); padding: 6px 12px; border-radius: 20px; color: var(--accent-green); font-weight: 600; }
         .pulse-dot { width: 6px; height: 6px; background: var(--accent-green); border-radius: 50%; }
@@ -118,7 +117,7 @@ HTML_CONTENT = """
 
     <header>
         <h1>QuickVC 🚂</h1>
-        <p>Python Signaled Audio Grid</p>
+        <p>SocketIO Premium Ecosystem</p>
     </header>
 
     <div class="app-container">
@@ -145,7 +144,7 @@ HTML_CONTENT = """
                     <h3 id="currentUserNameDisplay">Active Member</h3>
                     <p id="roomCodeDisplay" style="font-family: monospace; color: var(--accent-green); font-size: 0.85rem; margin-top:2px;"></p>
                 </div>
-                <div class="status-badge"><div class="pulse-dot"></div>Live</div>
+                <div class="status-badge"><div class="pulse-dot"></div>Connected</div>
             </div>
 
             <div class="user-feed-stack" id="usersContainer"></div>
@@ -160,12 +159,13 @@ HTML_CONTENT = """
     <div id="audioSpeakerEcosystemMixer" style="display:none;"></div>
 
     <script>
+        // STUN configurations for clean WebRTC P2P NAT traverse parameters
         const iceServers = { iceServers: [{ urls: ['stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'] }] };
-        let ws = null;
+        const socket = io.connect(location.origin);
+        
         let localStream = null;
         let peerConnections = {}; 
         
-        let myUserId = "usr_" + Math.floor(1000 + Math.random() * 9000);
         let myUsername = "";
         let targetRoomCode = "";
         let isMuted = false;
@@ -178,6 +178,7 @@ HTML_CONTENT = """
         const createRoomBtn = document.getElementById('createRoomBtn');
         const usersContainer = document.getElementById('usersContainer');
         const roomCodeDisplay = document.getElementById('roomCodeDisplay');
+        const currentUserNameDisplay = document.getElementById('currentUserNameDisplay');
         const selfMuteBtn = document.getElementById('selfMuteBtn');
         const exitRoomBtn = document.getElementById('exitRoomBtn');
         const audioSpeakerEcosystemMixer = document.getElementById('audioSpeakerEcosystemMixer');
@@ -203,76 +204,79 @@ HTML_CONTENT = """
             targetRoomCode = roomCodeInput.value.trim();
 
             try {
+                // Explicitly prompt microhpone & implicit speaker channel configurations
                 localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
             } catch(e) {
-                return alert("Microphone access is mandatory.");
+                return alert("Microphone hardware authorizations are strictly mandatory.");
             }
 
-            // Establish real-time signaling backbone websocket pipeline
-            const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-            ws = new WebSocket(`${protocol}//${window.location.host}/ws/${targetRoomCode}/${myUserId}`);
+            // Bind SocketIO structural parameters 
+            socket.emit('join_room', { room: targetRoomCode, username: myUsername });
 
-            ws.onopen = () => {
-                lobbyView.classList.remove('active');
-                roomView.classList.add('active');
-                roomCodeDisplay.innerText = `NODE ID: ${targetRoomCode}`;
-                
-                // Inform the rest of the node architecture that a new peer has compiled
-                ws.send(jsonPackage("join", { name: myUsername }));
-            };
-
-            ws.onmessage = async (event) => {
-                const packet = JSON.parse(event.data);
-                const senderId = packet.sender;
-
-                if (packet.type === "user_list") {
-                    renderGrid(packet.data.users);
-                }
-                else if (packet.type === "peer_joined") {
-                    // Initialize peer WebRTC connection and deliver offer description mapping
-                    initiateWebRTCPairing(senderId, true);
-                }
-                else if (packet.type === "offer") {
-                    let pc = initiateWebRTCPairing(senderId, false);
-                    await pc.setRemoteDescription(new RTCSessionDescription(packet.data));
-                    let answer = await pc.createAnswer();
-                    await pc.setLocalDescription(answer);
-                    ws.send(jsonPackage("answer", answer, senderId));
-                }
-                else if (packet.type === "answer") {
-                    if (peerConnections[senderId]) {
-                        await peerConnections[senderId].setRemoteDescription(new RTCSessionDescription(packet.data));
-                    }
-                }
-                else if (packet.type === "ice_candidate") {
-                    if (peerConnections[senderId]) {
-                        await peerConnections[senderId].addIceCandidate(new RTCIceCandidate(packet.data)).catch(e => {});
-                    }
-                }
-            };
+            lobbyView.classList.remove('active');
+            roomView.classList.add('active');
+            roomCodeDisplay.innerText = `NODE: ${targetRoomCode}`;
+            currentUserNameDisplay.innerText = myUsername;
         };
 
-        function jsonPackage(type, data, target = null) {
-            return JSON.stringify({ type, data, sender: myUserId, target });
-        }
+        // --- SocketIO Intercept Signalling Layer Grid ---
+        socket.on('user_list', (data) => {
+            renderGrid(data.users);
+        });
 
-        function initiateWebRTCPairing(peerId, createOffer) {
-            if (peerConnections[peerId]) return peerConnections[peerId];
+        socket.on('peer_joined', (data) => {
+            // Initiate WebRTC offer pipeline when an external endpoint maps to the room
+            initiateWebRTCPairing(data.sid, data.username, true);
+        });
+
+        socket.on('signal', async (data) => {
+            const senderSid = data.sender_sid;
+            
+            if (data.sdp) {
+                let pc = initiateWebRTCPairing(senderSid, data.sender_name, false);
+                await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+                
+                if (data.sdp.type === 'offer') {
+                    const answer = await pc.createAnswer();
+                    await pc.setLocalDescription(answer);
+                    socket.emit('signal', { room: targetRoomCode, target_sid: senderSid, sdp: pc.localDescription });
+                }
+            } else if (data.ice) {
+                if (peerConnections[senderSid]) {
+                    await peerConnections[senderSid].addIceCandidate(new RTCIceCandidate(data.ice)).catch(e => {});
+                }
+            }
+        });
+
+        socket.on('peer_left', (data) => {
+            if (peerConnections[data.sid]) {
+                peerConnections[data.sid].close();
+                delete peerConnections[data.sid];
+            }
+            const el = document.getElementById(`speaker-${data.sid}`);
+            if(el) el.remove();
+        });
+
+        // --- Core WebRTC Audio Mixer Engine ---
+        function initiateWebRTCPairing(peerSid, peerName, createOffer) {
+            if (peerConnections[peerSid]) return peerConnections[peerSid];
 
             const pc = new RTCPeerConnection(iceServers);
-            peerConnections[peerId] = pc;
+            peerConnections[peerSid] = pc;
 
             localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
 
             pc.onicecandidate = (e) => {
-                if (e.candidate) ws.send(jsonPackage("ice_candidate", e.candidate, peerId));
+                if (e.candidate) {
+                    socket.emit('signal', { room: targetRoomCode, target_sid: peerSid, ice: e.candidate });
+                }
             };
 
             pc.ontrack = (e) => {
-                let aud = document.getElementById(`speaker-${peerId}`);
+                let aud = document.getElementById(`speaker-${peerSid}`);
                 if(!aud) {
                     aud = document.createElement('audio');
-                    aud.id = `speaker-${peerId}`;
+                    aud.id = `speaker-${peerSid}`;
                     aud.autoplay = true;
                     audioSpeakerEcosystemMixer.appendChild(aud);
                 }
@@ -283,7 +287,7 @@ HTML_CONTENT = """
                 pc.onnegotiationneeded = async () => {
                     let offer = await pc.createOffer();
                     await pc.setLocalDescription(offer);
-                    ws.send(jsonPackage("offer", offer, peerId));
+                    socket.emit('signal', { room: targetRoomCode, target_sid: peerSid, sdp: pc.localDescription });
                 };
             }
 
@@ -297,10 +301,10 @@ HTML_CONTENT = """
                 card.className = "native-member-card";
                 card.innerHTML = `
                     <div class="member-profile">
-                        <div class="member-avatar">${user.name.substring(0,2).toUpperCase()}</div>
+                        <div class="member-avatar">${user.username.substring(0,2).toUpperCase()}</div>
                         <div>
-                            <div class="m-name">${user.name} ${user.id === myUserId ? '(You)' : ''}</div>
-                            <div style="font-size:0.75rem; color:var(--text-muted);">Connected</div>
+                            <div class="m-name">${user.username} ${user.sid === socket.id ? '(You)' : ''}</div>
+                            <div style="font-size:0.75rem; color:var(--text-muted);">Active Node</div>
                         </div>
                     </div>
                 `;
@@ -316,9 +320,6 @@ HTML_CONTENT = """
         };
 
         exitRoomBtn.onclick = () => {
-            if(ws) ws.close();
-            if(localStream) localStream.getTracks().forEach(t => t.stop());
-            Object.keys(peerConnections).forEach(k => peerConnections[k].close());
             window.location.reload();
         };
     </script>
@@ -326,66 +327,73 @@ HTML_CONTENT = """
 </html>
 """
 
-@app.get("/", response_class=HTMLResponse)
-async def serve_dashboard():
-    return HTMLResponse(content=HTML_CONTENT)
+# Structural in-memory runtime store: { room_code: { session_id: username } }
+room_directory = {}
 
-@app.websocket("/ws/{room_code}/{user_id}")
-async def websocket_endpoint(websocket: WebSocket, room_code: str, user_id: str):
-    await websocket.accept()
+@app.route('/')
+def index():
+    return render_template_string(HTML_TEMPLATE)
+
+@socketio.on('join_room')
+def handle_join(data):
+    room = data['room']
+    username = data['username']
+    sid = request.sid
+
+    join_room(room)
     
-    if room_code not in active_rooms:
-        active_rooms[room_code] = {}
-        
-    # Store peer routing properties parameters
-    active_rooms[room_code][user_id] = {
-        "socket": websocket,
-        "name": "Anonymous"
+    if room not in room_directory:
+        room_directory[room] = {}
+    room_directory[room][sid] = username
+
+    # 1. Alert old members to initiate WebRTC pipeline links with new node identity
+    emit('peer_joined', {'sid': sid, 'username': username}, to=room, include_self=False)
+    
+    # 2. Push full current room roster to everybody for native visual sync structures
+    sync_room_manifest(room)
+
+@socketio.on('signal')
+def handle_signal_routing(data):
+    room = data['room']
+    target_sid = data['target_sid']
+    sid = request.sid
+    
+    payload = {
+        'sender_sid': sid,
+        'sender_name': room_directory.get(room, {}).get(sid, 'Anonymous')
     }
-
-    try:
-        while True:
-            raw_payload = await websocket.receive_text()
-            packet = json.loads(raw_payload)
-            
-            # Action event routing matrix handler
-            if packet["type"] == "join":
-                active_rooms[room_code][user_id]["name"] = packet["data"]["name"]
-                await broadcast_room_manifest(room_code)
-                await alert_peers_of_arrival(room_code, user_id)
-                
-            elif packet["type"] in ["offer", "answer", "ice_candidate"]:
-                target_peer = packet["target"]
-                if target_peer in active_rooms[room_code]:
-                    await active_rooms[room_code][target_peer]["socket"].send_text(json.dumps(packet))
-
-    except WebSocketDisconnect:
-        # Perform memory cleanup configurations automatically upon hardware dropouts
-        if room_code in active_rooms and user_id in active_rooms[room_code]:
-            del active_rooms[room_code][user_id]
-            if not active_rooms[room_code]:
-                del active_rooms[room_code]
-            else:
-                await broadcast_room_manifest(room_code)
-
-async def broadcast_room_manifest(room_code):
-    """Sends list of connected names and IDs within a target node ecosystem."""
-    if room_code not in active_rooms: return
-    user_list = [{"id": uid, "name": meta["name"]} for uid, meta in active_rooms[room_code].items()]
     
-    packet = json.dumps({"type": "user_list", "data": {"users": user_list}, "sender": "server"})
-    for client in active_rooms[room_code].values():
-        await client["socket"].send_text(packet)
+    if 'sdp' in data:
+        payload['sdp'] = data['sdp']
+    if 'ice' in data:
+        payload['ice'] = data['ice']
 
-async def alert_peers_of_arrival(room_code, fresh_user_id):
-    """Alerts pre-existing room connections to initiate WebRTC setups."""
-    packet = json.dumps({"type": "peer_joined", "data": {}, "sender": fresh_user_id})
-    for uid, client in active_rooms[room_code].items():
-        if uid != fresh_user_id:
-            await client["socket"].send_text(packet)
+    # Route WebRTC signaling directly to the specific target peer session
+    emit('signal', payload, to=target_sid)
 
-if __name__ == "__main__":
-    import uvicorn
-    # Bind to environment assigned deployment ports mapped on Railway
-    port = int(os.environ.get("PORT", 8000))
-    uvicorn.run("index.py:app", host="0.0.0.0", port=port, reload=True)
+@socketio.on('disconnect')
+def handle_disconnect():
+    sid = request.sid
+    for room, users in list(room_directory.items()):
+        if sid in users:
+            username = users[sid]
+            del users[sid]
+            leave_room(room)
+            
+            emit('peer_left', {'sid': sid, 'username': username}, to=room)
+            
+            if not users:
+                del room_directory[room]
+            else:
+                sync_room_manifest(room)
+            break
+
+def sync_room_manifest(room):
+    users_list = [{'sid': sid, 'username': name} for sid, name in room_directory.get(room, {}).items()]
+    emit('user_list', {'users': users_list}, to=room)
+
+# Railway automatically sets up and uses a Procfile if present,
+# but we retain this block as a secondary safeguard for local tests.
+if __name__ == '__main__':
+    port = int(os.environ.get("PORT", 5000))
+    socketio.run(app, host='0.0.0.0', port=port)

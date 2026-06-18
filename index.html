@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QuickVC - Premium Voice Chat</title>
+    <style>
+        :root {
+            --bg-gradient: linear-gradient(135deg, #050b07 0%, #111a14 100%);
+            --accent-green: #00ff66;
+            --accent-glow: rgba(0, 255, 102, 0.4);
+            --glass-bg: rgba(15, 27, 20, 0.65);
+            --glass-border: rgba(0, 255, 102, 0.15);
+            --text-main: #e2e8f0;
+            --text-muted: #85998a;
+            --danger: #ff3333;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        body {
+            background: var(--bg-gradient);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            padding: 40px 20px;
+            overflow-x: hidden;
+        }
+
+        /* App Title Header */
+        header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        header h1 {
+            font-size: 2.5rem;
+            font-weight: 800;
+            letter-spacing: 2px;
+            background: linear-gradient(to right, #ffffff, var(--accent-green));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 0 30px var(--accent-glow);
+        }
+
+        header p {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            margin-top: 5px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        /* Glassmorphic Container */
+        .glass-panel {
+            background: var(--glass-bg);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--glass-border);
+            border-radius: 24px;
+            padding: 35px;
+            width: 100%;
+            max-width: 480px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+            transition: all 0.3s ease;
+        }
+
+        /* UI Views toggling */
+        .view { display: none; }
+        .view.active { display: block; }
+
+        /* Form Controls */
+        .input-group {
+            margin-bottom: 25px;
+            position: relative;
+        }
+
+        input {
+            width: 100%;
+            padding: 16px;
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            color: #fff;
+            font-size: 1.1rem;
+            letter-spacing: 1px;
+            text-align: center;
+            outline: none;
+            transition: all 0.3s ease;
+        }
+
+        input:focus {
+            border-color: var(--accent-green);
+            box-shadow: 0 0 15px rgba(0, 255, 102, 0.2);
+        }
+
+        .btn-stack {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        button {
+            width: 100%;
+            padding: 16px;
+            border-radius: 12px;
+            border: none;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        button.primary {
+            background: var(--accent-green);
+            color: #050b07;
+            box-shadow: 0 4px 20px var(--accent-glow);
+        }
+
+        button.primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 25px rgba(0, 255, 102, 0.6);
+        }
+
+        button.secondary {
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text-main);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        button.secondary:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+        }
+
+        button.danger {
+            background: rgba(255, 51, 51, 0.15);
+            color: var(--danger);
+            border: 1px solid rgba(255, 51, 51, 0.3);
+        }
+
+        button.danger:hover {
+            background: var(--danger);
+            color: #fff;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+            box-shadow: none !important;
+        }
+
+        /* --- Discord Style VC Dashboard Room UI --- */
+        .room-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 25px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .room-title h3 { font-size: 1.3rem; font-weight: 700; color: #fff;}
+        .room-title span { font-size: 0.8rem; color: var(--accent-green); font-family: monospace;}
+
+        .user-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            max-height: 280px;
+            overflow-y: auto;
+            margin-bottom: 25px;
+            padding-right: 5px;
+        }
+
+        /* Custom Scrollbar for Luxury Grid */
+        .user-list::-webkit-scrollbar { width: 4px; }
+        .user-list::-webkit-scrollbar-thumb { background: var(--glass-border); border-radius: 4px; }
+
+        .user-card {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(0, 0, 0, 0.25);
+            padding: 12px 16px;
+            border-radius: 14px;
+            border: 1px solid rgba(255, 255, 255, 0.03);
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: #1c3524;
+            border: 2px solid var(--accent-green);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 0.85rem;
+            color: var(--accent-green);
+        }
+
+        .avatar.speaking {
+            box-shadow: 0 0 12px var(--accent-green);
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+
+        .user-meta .name { font-size: 0.95rem; font-weight: 500; }
+        .user-meta .role { font-size: 0.75rem; color: var(--text-muted); }
+
+        .action-icons { display: flex; gap: 8px; }
+        
+        .icon-btn {
+            background: rgba(255, 255, 255, 0.05);
+            border: none;
+            color: var(--text-main);
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            padding: 0;
+            font-size: 0.85rem;
+        }
+
+        .icon-btn:hover { background: rgba(255, 255, 255, 0.15); color: #fff; }
+        .icon-btn.active-danger { background: rgba(255, 51, 51, 0.2); color: var(--danger); }
+
+        /* Host Controls Console */
+        .host-panel {
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px dashed var(--glass-border);
+            border-radius: 14px;
+            padding: 15px;
+            margin-bottom: 25px;
+        }
+        .host-panel p { font-size: 0.8rem; color: var(--accent-green); margin-bottom: 10px; font-weight: 600; text-transform: uppercase;}
+        .host-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .host-btns button { padding: 10px; font-size: 0.85rem; border-radius: 8px; }
+
+        .control-dock {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            padding-top: 20px;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>QuickVC</h1>
+        <p>Luxury Spatial Audio Ecosystem</p>
+    </header>
+
+    <main class="glass-panel">
+        
+        <div id="lobbyView" class="view active">
+            <div class="input-group">
+                <input type="text" id="roomCodeInput" placeholder="Enter 10-Digit Code" maxlength="10">
+            </div>
+            <div class="btn-stack">
+                <button id="joinRoomBtn" class="primary" disabled>Join Ecosystem</button>
+                <button id="createRoomBtn" class="secondary">Create Elite Room</button>
+            </div>
+        </div>
+
+        <div id="roomView" class="view">
+            <div class="room-header">
+                <div class="room-title">
+                    <h3 id="roomTitleDisplay">Ecosystem Audio</h3>
+                    <span id="roomCodeDisplay">CODE: 0000000000</span>
+                </div>
+                <div id="statusIndicator" style="font-size: 0.8rem; color: var(--accent-green);">● Connected</div>
+            </div>
+
+            <div id="hostConsole" class="host-panel" style="display: none;">
+                <p>Host Command Console</p>
+                <div class="host-btns">
+                    <button id="hostMuteAllBtn" class="secondary">Mute Everyone</button>
+                    <button id="hostUnmuteAllBtn" class="secondary">Unmute Everyone</button>
+                </div>
+            </div>
+
+            <div class="user-list" id="usersContainer">
+                </div>
+
+            <div class="control-dock">
+                <button id="selfMuteBtn" class="secondary">🎙️ Mute</button>
+                <button id="exitRoomBtn" class="danger">🚪 Disconnect</button>
+            </div>
+        </div>
+
+    </main>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+        import { getFirestore, doc, setDoc, getDoc, updateDoc, onSnapshot, deleteDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+        // Firebase Configuration requested by User
+        const firebaseConfig = {
+            apiKey: "AIzaSyAcKOAe5PMyY20zDba-ObQ9UvDQ_NjYN4A",
+            authDomain: "quickvc-347a4.firebaseapp.com",
+            projectId: "quickvc-347a4",
+            storageBucket: "quickvc-347a4.firebasestorage.app",
+            messagingSenderId: "860858171449",
+            appId: "1:860858171449:web:df62f7966f959e0ff24de8"
+        };
+
+        // Initialize App & DB
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        // State Machine Variables
+        let currentRoomCode = null;
+        let isHost = false;
+        let myUserId = "user_" + Math.floor(1000 + Math.random() * 9000);
+        let roomUnsubscribe = null;
+
+        // Dom Elements Elements
+        const lobbyView = document.getElementById('lobbyView');
+        const roomView = document.getElementById('roomView');
+        const roomCodeInput = document.getElementById('roomCodeInput');
+        const joinRoomBtn = document.getElementById('joinRoomBtn');
+        const createRoomBtn = document.getElementById('createRoomBtn');
+        
+        const roomCodeDisplay = document.getElementById('roomCodeDisplay');
+        const hostConsole = document.getElementById('hostConsole');
+        const usersContainer = document.getElementById('usersContainer');
+        const selfMuteBtn = document.getElementById('selfMuteBtn');
+        const exitRoomBtn = document.getElementById('exitRoomBtn');
+        const hostMuteAllBtn = document.getElementById('hostMuteAllBtn');
+        const hostUnmuteAllBtn = document.getElementById('hostUnmuteAllBtn');
+
+        // Force strict 10 digit constraint UI enablement
+        roomCodeInput.addEventListener('input', () => {
+            const val = roomCodeInput.value.replace(/[^0-9]/g, '');
+            roomCodeInput.value = val;
+            joinRoomBtn.disabled = val.length !== 10;
+        });
+
+        // Generate cryptographic grade arbitrary 10 digit room strings
+        function generateRoomCode() {
+            let code = "";
+            for(let i=0; i<10; i++) {
+                code += Math.floor(Math.random() * 10).toString();
+            }
+            return code;
+        }
+
+        // Action: Create Elite Room
+        createRoomBtn.onclick = async () => {
+            const newCode = generateRoomCode();
+            isHost = true;
+            
+            // Build the fundamental layout structure state tree for Firestore signaling base
+            const roomRef = doc(db, "rooms", newCode);
+            await setDoc(roomRef, {
+                roomCode: newCode,
+                createdAt: new Date(),
+                hostId: myUserId,
+                globalMuteActive: false,
+                forceTerminated: false,
+                participants: {
+                    [myUserId]: {
+                        id: myUserId,
+                        name: "Host (You)",
+                        isMuted: false,
+                        isBanned: false,
+                        serverMuted: false
+                    }
+                }
+            });
+
+            // Standard navigation string construction format requested by user
+            window.location.search = `?${newCode}`;
+        };
+
+        // Action: Join Ecosystem
+        joinRoomBtn.onclick = () => {
+            const code = roomCodeInput.value.trim();
+            if(code.length === 10) {
+                window.location.search = `?${code}`;
+            }
+        };
+
+        // UI Core Routing System Processing Matrix
+        async function checkUrlRouting() {
+            const queryParams = window.location.search.replace('?', '');
+            if (queryParams.length === 10 && /^\d+$/.test(queryParams)) {
+                currentRoomCode = queryParams;
+                
+                const roomRef = doc(db, "rooms", currentRoomCode);
+                const roomSnap = await getDoc(roomRef);
+
+                if (roomSnap.exists()) {
+                    const roomData = roomSnap.data();
+                    // Identify if returning user is original room authority node
+                    if (roomData.hostId === myUserId) {
+                        isHost = true;
+                    } else {
+                        isHost = false;
+                        // Handle peer registration mutations inside the room structure
+                        let updatedParticipants = { ...roomData.participants };
+                        
+                        // Enforce protection parameters if returning banned identity
+                        if(updatedParticipants[myUserId]?.isBanned) {
+                            alert("You are explicitly banned from this network node ecosystem.");
+                            window.location.search = '';
+                            return;
+                        }
+
+                        updatedParticipants[myUserId] = {
+                            id: myUserId,
+                            name: `Peer Node ${myUserId.split('_')[1]}`,
+                            isMuted: false,
+                            isBanned: false,
+                            serverMuted: roomData.globalMuteActive || false
+                        };
+                        await updateDoc(roomRef, { participants: updatedParticipants });
+                    }
+                    
+                    initializeActiveVoiceRoom(roomRef);
+                } else {
+                    alert("Ecosystem configuration code not detected in Firestore clusters.");
+                    window.location.search = '';
+                }
+            }
+        }
+
+        // Active State Room Engine loop 
+        function initializeActiveVoiceRoom(roomRef) {
+            lobbyView.classList.remove('active');
+            roomView.classList.add('active');
+            roomCodeDisplay.innerText = `CODE: ${currentRoomCode}`;
+
+            if(isHost) {
+                hostConsole.style.display = "block";
+            }
+
+            // Real-time synchronization stream
+            roomUnsubscribe = onSnapshot(roomRef, (snapshot) => {
+                if (!snapshot.exists()) {
+                    alert("This session has been terminated by the administrative host layer.");
+                    exitRoomSession(false);
+                    return;
+                }
+
+                const data = snapshot.val ? snapshot.val() : snapshot.data();
+
+                if (data.forceTerminated) {
+                    alert("The host has structurally closed down this channel.");
+                    exitRoomSession(false);
+                    return;
+                }
+
+                const myState = data.participants[myUserId];
+                if (myState && myState.isBanned) {
+                    alert("An administrator has extracted and banned your connection.");
+                    exitRoomSession(false);
+                    return;
+                }
+
+                // Synchronize global mute changes forced down from host state changes
+                if(myState && myState.serverMuted) {
+                    selfMuteBtn.innerText = "🔇 Server Muted";
+                    selfMuteBtn.disabled = true;
+                } else {
+                    selfMuteBtn.disabled = false;
+                    selfMuteBtn.innerText = myState?.isMuted ? "🔇 Muted" : "🎙️ Mute";
+                }
+
+                // Re-render user stack interface metrics layout
+                renderUserEcosystem(data.participants, roomRef, data.hostId);
+            });
+        }
+
+        // Render UI Nodes dynamically reminiscent of WebRTC components
+        function renderUserEcosystem(participants, roomRef, hostId) {
+            usersContainer.innerHTML = "";
+            
+            Object.keys(participants).forEach(uid => {
+                const user = participants[uid];
+                if (user.isBanned) return; // Hide banned entities
+
+                const card = document.createElement('div');
+                card.className = "user-card";
+
+                const isSpeakingSimulated = !user.isMuted && !user.serverMuted;
+
+                card.innerHTML = `
+                    <div class="user-info">
+                        <div class="avatar ${isSpeakingSimulated ? 'speaking' : ''}">
+                            ${user.id.split('_')[1] ? user.id.split('_')[1].substring(0,2) : 'VC'}
+                        </div>
+                        <div class="user-meta">
+                            <div class="name">${user.name}</div>
+                            <div class="role">${uid === hostId ? 'Host Authority' : 'Connected Endpoint'}</div>
+                        </div>
+                    </div>
+                    <div class="action-icons" id="actions-${uid}">
+                        </div>
+                `;
+
+                usersContainer.appendChild(card);
+                const contextActionsWrapper = document.getElementById(`actions-${uid}`);
+
+                if (isHost) {
+                    if (uid !== myUserId) {
+                        // Injected dynamic capability controls for administrative structural controls
+                        const muteBtn = document.createElement('button');
+                        muteBtn.className = `icon-btn ${user.serverMuted ? 'active-danger' : ''}`;
+                        muteBtn.innerText = user.serverMuted ? "🔇" : "🎙️";
+                        muteBtn.title = "Toggle Target Silence";
+                        muteBtn.onclick = async () => {
+                            let updated = { ...participants };
+                            updated[uid].serverMuted = !updated[uid].serverMuted;
+                            await updateDoc(roomRef, { participants: updated });
+                        };
+
+                        const banBtn = document.createElement('button');
+                        banBtn.className = "icon-btn active-danger";
+                        banBtn.innerText = "🚫";
+                        banBtn.title = "Ban node configuration completely";
+                        banBtn.onclick = async () => {
+                            let updated = { ...participants };
+                            updated[uid].isBanned = true;
+                            await updateDoc(roomRef, { participants: updated });
+                        };
+
+                        contextActionsWrapper.appendChild(muteBtn);
+                        contextActionsWrapper.appendChild(banBtn);
+                    }
+                } else {
+                    // Standard structural display metrics for non-administrative peers
+                    if(user.isMuted || user.serverMuted) {
+                        const statusIndicator = document.createElement('span');
+                        statusIndicator.innerText = "Muted 🤐";
+                        statusIndicator.style.fontSize = "0.8rem";
+                        statusIndicator.style.color = "var(--text-muted)";
+                        contextActionsWrapper.appendChild(statusIndicator);
+                    }
+                }
+            });
+        }
+
+        // Action Loop: Change Self mic state metrics
+        selfMuteBtn.onclick = async () => {
+            const roomRef = doc(db, "rooms", currentRoomCode);
+            const roomSnap = await getDoc(roomRef);
+            if(roomSnap.exists()) {
+                const data = roomSnap.data();
+                if(data.participants[myUserId].serverMuted) return; // Block logic processing if administrative lock is active
+
+                let updated = { ...data.participants };
+                updated[myUserId].isMuted = !updated[myUserId].isMuted;
+                await updateDoc(roomRef, { participants: updated });
+            }
+        };
+
+        // Global Command Matrix Processing: Global Mute Activation
+        hostMuteAllBtn.onclick = async () => {
+            const roomRef = doc(db, "rooms", currentRoomCode);
+            const roomSnap = await getDoc(roomRef);
+            if(roomSnap.exists()) {
+                const data = roomSnap.data();
+                let updated = { ...data.participants };
+                Object.keys(updated).forEach(uid => {
+                    if(uid !== myUserId) updated[uid].serverMuted = true;
+                });
+                await updateDoc(roomRef, { participants: updated, globalMuteActive: true });
+            }
+        };
+
+        // Global Command Matrix Processing: Global Mute Deactivation
+        hostUnmuteAllBtn.onclick = async () => {
+            const roomRef = doc(db, "rooms", currentRoomCode);
+            const roomSnap = await getDoc(roomRef);
+            if(roomSnap.exists()) {
+                const data = roomSnap.data();
+                let updated = { ...data.participants };
+                Object.keys(updated).forEach(uid => {
+                    if(uid !== myUserId) updated[uid].serverMuted = false;
+                });
+                await updateDoc(roomRef, { participants: updated, globalMuteActive: false });
+            }
+        };
+
+        // Action Logic Loop: Process Disconnects cleanly
+        async function exitRoomSession(cleanExitFromSelf = true) {
+            if(roomUnsubscribe) roomUnsubscribe();
+            
+            if (cleanExitFromSelf && currentRoomCode) {
+                const roomRef = doc(db, "rooms", currentRoomCode);
+                const roomSnap = await getDoc(roomRef);
+                
+                if (roomSnap.exists()) {
+                    if (isHost) {
+                        // Structural deletion or structural mark validation trigger parameter loop
+                        await updateDoc(roomRef, { forceTerminated: true });
+                        await deleteDoc(roomRef);
+                    } else {
+                        const data = roomSnap.data();
+                        let updated = { ...data.participants };
+                        delete updated[myUserId];
+                        await updateDoc(roomRef, { participants: updated });
+                    }
+                }
+            }
+
+            // Flush system parameters state variables and force execution re-routing
+            window.location.search = '';
+        }
+
+        exitRoomBtn.onclick = () => exitRoomSession(true);
+
+        // Run checking algorithm matrix processing upon completion lifecycle initialization loops
+        window.onload = checkUrlRouting;
+    </script>
+</body>
+</html>
